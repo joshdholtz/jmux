@@ -46,6 +46,7 @@ pub fn render_wide(f: &mut Frame, app: &App) {
     let sidebar_area = columns[0];
     let panes_area = columns[1];
 
+    *app.sidebar_rect.borrow_mut() = Some(sidebar_area);
     render_session_list(f, sidebar_area, app);
     render_status_bar(f, status_area, app);
 

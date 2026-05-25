@@ -48,6 +48,8 @@ pub struct App {
     pub session_rects: RefCell<Vec<Rect>>,
     /// Click targets for pane rows in the sidebar: (sess_id, pane_id) → Rect
     pub sidebar_pane_rects: RefCell<HashMap<(usize, usize), Rect>>,
+    /// Bounding rect of the entire sidebar (for scroll-over-sidebar detection)
+    pub sidebar_rect: RefCell<Option<Rect>>,
 }
 
 impl App {
@@ -81,6 +83,7 @@ impl App {
             pane_rects: RefCell::new(HashMap::new()),
             session_rects: RefCell::new(Vec::new()),
             sidebar_pane_rects: RefCell::new(HashMap::new()),
+            sidebar_rect: RefCell::new(None),
         }
     }
 
@@ -122,6 +125,7 @@ impl App {
             pane_rects: RefCell::new(HashMap::new()),
             session_rects: RefCell::new(Vec::new()),
             sidebar_pane_rects: RefCell::new(HashMap::new()),
+            sidebar_rect: RefCell::new(None),
         }
     }
 
@@ -1120,6 +1124,21 @@ impl App {
     }
 
     fn handle_scroll(&mut self, col: u16, row: u16, up: bool) {
+        // If the scroll is over the sidebar, cycle through sessions instead.
+        if let Some(rect) = *self.sidebar_rect.borrow() {
+            if contains(&rect, col, row) {
+                let len = self.state.sessions.len();
+                if len > 0 {
+                    if up {
+                        self.state.active_session = (self.state.active_session + len - 1) % len;
+                    } else {
+                        self.state.active_session = (self.state.active_session + 1) % len;
+                    }
+                }
+                return;
+            }
+        }
+
         let pane_rects = self.pane_rects.borrow().clone();
         for ((sess_id, pane_id), rect) in &pane_rects {
             if contains(rect, col, row) {
