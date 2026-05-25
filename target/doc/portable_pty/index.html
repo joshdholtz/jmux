@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="This crate provides a cross platform API for working with the psuedo terminal (pty) interfaces provided by the system. Unlike other crates in this space, this crate provides a set of traits that allow selecting from different implementations at runtime. This crate is part of wezterm."><title>portable_pty - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="portable_pty" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.0 (254b59607 2026-01-19)" data-channel="1.93.0" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../static.files/storage-e2aeef58.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate portable_pty</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../portable_pty/index.html">portable_<wbr>pty</a><span class="version">0.8.1</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#reexports">Crate Items</a></h3><ul class="block"><li><a href="#reexports" title="Re-exports">Re-exports</a></li><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#traits" title="Traits">Traits</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>portable_<wbr>pty</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/portable_pty/lib.rs.html#1-396">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>This crate provides a cross platform API for working with the
+psuedo terminal (pty) interfaces provided by the system.
+Unlike other crates in this space, this crate provides a set
+of traits that allow selecting from different implementations
+at runtime.
+This crate is part of <a href="https://github.com/wez/wezterm">wezterm</a>.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>portable_pty::{CommandBuilder, PtySize, native_pty_system, PtySystem};
+<span class="kw">use </span>anyhow::Error;
+
+<span class="comment">// Use the native pty implementation for the system
+</span><span class="kw">let </span>pty_system = native_pty_system();
+
+<span class="comment">// Create a new pty
+</span><span class="kw">let </span><span class="kw-2">mut </span>pair = pty_system.openpty(PtySize {
+    rows: <span class="number">24</span>,
+    cols: <span class="number">80</span>,
+    <span class="comment">// Not all systems support pixel_width, pixel_height,
+    // but it is good practice to set it to something
+    // that matches the size of the selected font.  That
+    // is more complex than can be shown here in this
+    // brief example though!
+    </span>pixel_width: <span class="number">0</span>,
+    pixel_height: <span class="number">0</span>,
+})<span class="question-mark">?</span>;
+
+<span class="comment">// Spawn a shell into the pty
+</span><span class="kw">let </span>cmd = CommandBuilder::new(<span class="string">"bash"</span>);
+<span class="kw">let </span>child = pair.slave.spawn_command(cmd)<span class="question-mark">?</span>;
+
+<span class="comment">// Read and parse output from the pty with reader
+</span><span class="kw">let </span><span class="kw-2">mut </span>reader = pair.master.try_clone_reader()<span class="question-mark">?</span>;
+
+<span class="comment">// Send data to the pty by writing to the master
+</span><span class="macro">writeln!</span>(pair.master.take_writer()<span class="question-mark">?</span>, <span class="string">"ls -l\r\n"</span>)<span class="question-mark">?</span>;</code></pre></div></div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt id="reexport.CommandBuilder"><code>pub use cmdbuilder::<a class="struct" href="cmdbuilder/struct.CommandBuilder.html" title="struct portable_pty::cmdbuilder::CommandBuilder">CommandBuilder</a>;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="cmdbuilder/index.html" title="mod portable_pty::cmdbuilder">cmdbuilder</a></dt><dt><a class="mod" href="serial/index.html" title="mod portable_pty::serial">serial</a></dt><dd>This module implements a serial port based tty.
+This is a bit different from the other implementations in that
+we cannot explicitly spawn a process into the serial connection,
+so we can only use a <code>CommandBuilder::new_default_prog</code> with the
+<code>openpty</code> method.
+On most (all?) systems, attempting to open multiple instances of
+the same serial port will fail.</dd><dt><a class="mod" href="unix/index.html" title="mod portable_pty::unix">unix</a></dt><dd>Working with pseudo-terminals</dd></dl><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.ExitStatus.html" title="struct portable_pty::ExitStatus">Exit<wbr>Status</a></dt><dd>Represents the exit status of a child process.</dd><dt><a class="struct" href="struct.PtyPair.html" title="struct portable_pty::PtyPair">PtyPair</a></dt><dt><a class="struct" href="struct.PtySize.html" title="struct portable_pty::PtySize">PtySize</a></dt><dd>Represents the size of the visible display area in the pty</dd></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.Child.html" title="trait portable_pty::Child">Child</a></dt><dd>Represents a child process spawned into the pty.
+This handle can be used to wait for or terminate that child process.</dd><dt><a class="trait" href="trait.ChildKiller.html" title="trait portable_pty::ChildKiller">Child<wbr>Killer</a></dt><dd>Represents the ability to signal a Child to terminate</dd><dt><a class="trait" href="trait.MasterPty.html" title="trait portable_pty::MasterPty">Master<wbr>Pty</a></dt><dd>Represents the master/control end of the pty</dd><dt><a class="trait" href="trait.PtySystem.html" title="trait portable_pty::PtySystem">PtySystem</a></dt><dd>The <code>PtySystem</code> trait allows an application to work with multiple
+possible Pty implementations at runtime.  This is important on
+Windows systems which have a variety of implementations.</dd><dt><a class="trait" href="trait.SlavePty.html" title="trait portable_pty::SlavePty">Slave<wbr>Pty</a></dt><dd>Represents the slave side of a pty.
+Can be used to spawn processes into the pty.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.native_pty_system.html" title="fn portable_pty::native_pty_system">native_<wbr>pty_<wbr>system</a></dt></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.NativePtySystem.html" title="type portable_pty::NativePtySystem">Native<wbr>PtySystem</a></dt></dl></section></div></main></body></html>
