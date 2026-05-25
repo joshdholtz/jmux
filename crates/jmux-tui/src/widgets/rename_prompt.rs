@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_rename_prompt(f: &mut Frame, pane_area: Rect, input: &str) {
+pub fn render_rename_prompt(f: &mut Frame, pane_area: Rect, label: &str, input: &str) {
     if pane_area.height < 3 {
         return;
     }
@@ -16,7 +16,7 @@ pub fn render_rename_prompt(f: &mut Frame, pane_area: Rect, input: &str) {
         width: pane_area.width,
         height: 1,
     };
-    let text = format!(" Rename pane: {}_ ", input);
+    let text = format!(" {}: {}_ ", label, input);
     f.render_widget(
         Paragraph::new(text).style(Style::default().bg(Color::Blue).fg(Color::White)),
         prompt_area,
