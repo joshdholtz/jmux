@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::App;
+use crate::app::{App, RenameTarget};
 use crate::widgets::{
     dashboard::render_dashboard,
     pane_view::{render_pane, render_pane_content, render_pane_daemon},
@@ -168,12 +168,19 @@ pub fn render_wide(f: &mut Frame, app: &App) {
     }
 
     if let Some(ref input) = app.rename_input {
-        // find the active pane's rendered rect
-        let session = app.state.sessions.get(app.state.active_session);
-        if let Some(session) = session {
-            if let Some(pane) = session.panes.get(session.active_pane) {
-                if let Some(&rect) = app.pane_rects.borrow().get(&(session.id, pane.id)) {
-                    render_rename_prompt(f, rect, input);
+        match app.rename_target {
+            RenameTarget::Session => {
+                render_rename_prompt(f, sidebar_area, "Rename session", input);
+            }
+            RenameTarget::Pane => {
+                // find the active pane's rendered rect
+                let session = app.state.sessions.get(app.state.active_session);
+                if let Some(session) = session {
+                    if let Some(pane) = session.panes.get(session.active_pane) {
+                        if let Some(&rect) = app.pane_rects.borrow().get(&(session.id, pane.id)) {
+                            render_rename_prompt(f, rect, "Rename pane", input);
+                        }
+                    }
                 }
             }
         }
@@ -298,7 +305,11 @@ pub fn render_narrow(f: &mut Frame, app: &App) {
     }
 
     if let Some(ref input) = app.rename_input {
-        render_rename_prompt(f, pane_area, input);
+        let label = match app.rename_target {
+            RenameTarget::Session => "Rename session",
+            RenameTarget::Pane => "Rename pane",
+        };
+        render_rename_prompt(f, pane_area, label, input);
     }
 
     // BOTTOM BAR

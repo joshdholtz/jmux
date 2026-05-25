@@ -21,6 +21,13 @@ pub struct CopyMode {
     pub scroll_offset: usize, // lines from the bottom (0 = at bottom/live)
 }
 
+/// What the rename prompt is currently editing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RenameTarget {
+    Pane,
+    Session,
+}
+
 pub struct App {
     pub state: AppState,
     pub layout_mode: LayoutMode,
@@ -33,6 +40,8 @@ pub struct App {
     pub picker: Option<crate::widgets::picker::PickerState>,
     pub copy_mode: Option<CopyMode>,
     pub rename_input: Option<String>,
+    /// Whether the rename prompt is editing a pane or a session name.
+    pub rename_target: RenameTarget,
     /// When Some, TUI is connected to a background daemon instead of owning PTYs directly.
     pub daemon_client: Option<DaemonClient>,
     quit_requested: bool,
@@ -69,6 +78,7 @@ impl App {
             picker: None,
             copy_mode: None,
             rename_input: None,
+            rename_target: RenameTarget::Pane,
             daemon_client: None,
             quit_requested: false,
             detach_requested: false,
@@ -110,6 +120,7 @@ impl App {
             picker: None,
             copy_mode: None,
             rename_input: None,
+            rename_target: RenameTarget::Pane,
             daemon_client: Some(client),
             quit_requested: false,
             detach_requested: false,
@@ -434,10 +445,19 @@ impl App {
                                         if let Some(session) =
                                             self.state.sessions.get_mut(self.state.active_session)
                                         {
-                                            if let Some(pane) =
-                                                session.panes.get_mut(session.active_pane)
-                                            {
-                                                pane.name = new_name;
+                                            match self.rename_target {
+                                                RenameTarget::Session => {
+                                                    if let Some(ref mut project) = session.project {
+                                                        project.name = new_name;
+                                                    }
+                                                }
+                                                RenameTarget::Pane => {
+                                                    if let Some(pane) =
+                                                        session.panes.get_mut(session.active_pane)
+                                                    {
+                                                        pane.name = new_name;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -732,6 +752,19 @@ impl App {
                     .and_then(|s| s.panes.get(s.active_pane))
                     .map(|p| p.name.clone())
                     .unwrap_or_default();
+                self.rename_target = RenameTarget::Pane;
+                self.rename_input = Some(current);
+            }
+            // rename current session
+            KeyCode::Char('S') => {
+                let current = self
+                    .state
+                    .sessions
+                    .get(self.state.active_session)
+                    .and_then(|s| s.project.as_ref())
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+                self.rename_target = RenameTarget::Session;
                 self.rename_input = Some(current);
             }
             // jump to pane by number (1-9)
