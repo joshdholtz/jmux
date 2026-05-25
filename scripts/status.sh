@@ -2,6 +2,7 @@
 # jmux project status pane — refreshes every 30s
 
 while true; do
+    stty -echo 2>/dev/null
     clear
 
     jmux header "jmux"
