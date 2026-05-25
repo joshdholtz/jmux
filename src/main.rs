@@ -951,11 +951,13 @@ async fn cmd_select_daemon(
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     if lines.is_empty() {
-        // Print empty message as plain static text (no cursor movement = no flicker)
         let msg = empty_message.as_deref().unwrap_or("no items");
         println!("  \x1b[2m{}\x1b[0m", msg);
         let secs = if timeout > 0 { timeout } else { 30 };
+        // Raw mode absorbs typed characters silently during the wait
+        let _ = crossterm::terminal::enable_raw_mode();
         tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+        let _ = crossterm::terminal::disable_raw_mode();
         return Ok(());
     }
 
