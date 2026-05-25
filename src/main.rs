@@ -963,29 +963,31 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
         return Ok(());
     }
 
-    let term_height = crossterm::terminal::size()
-        .map(|(_, h)| h as usize)
-        .unwrap_or(24);
     let count = lines.len();
-
-    // How many items we can show (leave a couple rows for context above)
-    let visible_max = term_height.saturating_sub(2).max(3);
-    let visible = count.min(visible_max);
-
     let mut selected = 0usize;
-    let mut scroll_offset = 0usize; // top of visible window
-
+    let mut scroll_offset = 0usize;
     let mut stdout = std::io::stdout();
 
-    // Print the list initially so the terminal scrolls to make room
+    // Compute layout from current pane size
+    let compute_layout = || -> (usize, u16) {
+        let term_height = crossterm::terminal::size()
+            .map(|(_, h)| h as usize)
+            .unwrap_or(24);
+        let visible = count.min(term_height.saturating_sub(4).max(3));
+        (visible, visible as u16)
+    };
+    let (mut visible, _) = compute_layout();
+
+    // Print the list initially to claim rows and let the terminal scroll
     for (i, line) in lines.iter().take(visible).enumerate() {
         select_render_row(&mut stdout, line, i == selected)?;
     }
+    println!(); // hint line
     stdout.flush()?;
 
-    // Cursor is now below the list; remember start row
-    let (_, cursor_y) = crossterm::cursor::position().unwrap_or((0, visible as u16));
-    let start_row = cursor_y.saturating_sub(visible as u16);
+    // Cursor is now one past the hint line; start_row is where the list begins
+    let (_, cursor_y) = crossterm::cursor::position().unwrap_or((0, visible as u16 + 1));
+    let mut start_row = cursor_y.saturating_sub(visible as u16 + 1);
 
     enable_raw_mode()?;
     execute!(stdout, EnableMouseCapture, Hide)?;
@@ -996,31 +998,17 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
         None
     };
 
+    // Draw once before entering the wait loop
+    select_redraw(
+        &mut stdout,
+        &lines,
+        selected,
+        scroll_offset,
+        visible,
+        start_row,
+    )?;
+
     let selected_line = loop {
-        let redraw_start = scroll_offset;
-        let redraw_end = (scroll_offset + visible).min(count);
-
-        execute!(stdout, MoveTo(0, start_row))?;
-        for (vi, li) in (redraw_start..redraw_end).enumerate() {
-            execute!(stdout, Clear(ClearType::CurrentLine))?;
-            select_render_row(&mut stdout, &lines[li], li == selected)?;
-            // move to next line manually (print! won't scroll in raw mode)
-            execute!(stdout, MoveTo(0, start_row + vi as u16 + 1))?;
-        }
-        // Scroll hint
-        let hint = if count > visible {
-            format!(
-                " {DIM}({}/{}) ↑↓ navigate · enter open · q cancel{RESET}",
-                selected + 1,
-                count
-            )
-        } else {
-            format!(" {DIM}↑↓ navigate · enter open · q cancel{RESET}")
-        };
-        execute!(stdout, Clear(ClearType::CurrentLine))?;
-        print!("{}", hint);
-        stdout.flush()?;
-
         let wait = deadline
             .map(|d| d.saturating_duration_since(Instant::now()))
             .unwrap_or(Duration::from_secs(3600));
@@ -1030,6 +1018,8 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
         if !event::poll(wait)? {
             break None; // timeout
         }
+
+        let mut dirty = false;
         match event::read()? {
             Event::Key(k) => match k.code {
                 KeyCode::Up | KeyCode::Char('k') => {
@@ -1038,6 +1028,7 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
                         if selected < scroll_offset {
                             scroll_offset = selected;
                         }
+                        dirty = true;
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
@@ -1046,6 +1037,7 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
                         if selected >= scroll_offset + visible {
                             scroll_offset = selected + 1 - visible;
                         }
+                        dirty = true;
                     }
                 }
                 KeyCode::Enter => break Some(selected),
@@ -1061,9 +1053,7 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
                             break Some(selected);
                         }
                         selected = clicked_li;
-                        if selected >= scroll_offset + visible {
-                            scroll_offset = selected + 1 - visible;
-                        }
+                        dirty = true;
                     }
                 }
                 MouseEventKind::ScrollUp => {
@@ -1072,6 +1062,7 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
                         if selected < scroll_offset {
                             scroll_offset = selected;
                         }
+                        dirty = true;
                     }
                 }
                 MouseEventKind::ScrollDown => {
@@ -1080,11 +1071,34 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
                         if selected >= scroll_offset + visible {
                             scroll_offset = selected + 1 - visible;
                         }
+                        dirty = true;
                     }
                 }
                 _ => {}
             },
+            Event::Resize(_, _) => {
+                let (new_visible, _) = compute_layout();
+                visible = new_visible;
+                // Recompute start_row from current cursor position
+                let (_, cy) = crossterm::cursor::position().unwrap_or((0, 0));
+                start_row = cy.saturating_sub(1); // hint line is current row
+                if scroll_offset + visible > count {
+                    scroll_offset = count.saturating_sub(visible);
+                }
+                dirty = true;
+            }
             _ => {}
+        }
+
+        if dirty {
+            select_redraw(
+                &mut stdout,
+                &lines,
+                selected,
+                scroll_offset,
+                visible,
+                start_row,
+            )?;
         }
     };
 
@@ -1113,6 +1127,45 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
             .status()?;
     }
 
+    Ok(())
+}
+
+fn select_redraw(
+    stdout: &mut std::io::Stdout,
+    lines: &[String],
+    selected: usize,
+    scroll_offset: usize,
+    visible: usize,
+    start_row: u16,
+) -> Result<()> {
+    use crossterm::{
+        cursor::MoveTo,
+        execute,
+        terminal::{Clear, ClearType},
+    };
+
+    let count = lines.len();
+    let redraw_end = (scroll_offset + visible).min(count);
+
+    execute!(stdout, MoveTo(0, start_row))?;
+    for (vi, li) in (scroll_offset..redraw_end).enumerate() {
+        execute!(stdout, Clear(ClearType::CurrentLine))?;
+        select_render_row(stdout, &lines[li], li == selected)?;
+        execute!(stdout, MoveTo(0, start_row + vi as u16 + 1))?;
+    }
+    let hint = if count > visible {
+        format!(
+            " {DIM}({}/{}) ↑↓ navigate · enter open · q cancel{RESET}",
+            selected + 1,
+            count
+        )
+    } else {
+        format!(" {DIM}↑↓ navigate · enter open · q cancel{RESET}")
+    };
+    execute!(stdout, Clear(ClearType::CurrentLine))?;
+    use std::io::Write;
+    print!("{}", hint);
+    stdout.flush()?;
     Ok(())
 }
 
