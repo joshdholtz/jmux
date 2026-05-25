@@ -927,7 +927,14 @@ async fn cmd_select(
 
     // If running inside jmux, delegate to daemon popup
     if let Ok(socket_path) = std::env::var("JMUX_SOCKET") {
-        return cmd_select_daemon(lines, on_enter, std::path::PathBuf::from(socket_path)).await;
+        return cmd_select_daemon(
+            lines,
+            on_enter,
+            empty_message,
+            timeout,
+            std::path::PathBuf::from(socket_path),
+        )
+        .await;
     }
 
     // Fallback: in-pane TUI (used outside jmux)
@@ -937,12 +944,18 @@ async fn cmd_select(
 async fn cmd_select_daemon(
     lines: Vec<String>,
     on_enter: Option<String>,
+    empty_message: Option<String>,
+    timeout: u64,
     socket_path: std::path::PathBuf,
 ) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     if lines.is_empty() {
-        // Nothing to select — exit silently
+        // Print empty message as plain static text (no cursor movement = no flicker)
+        let msg = empty_message.as_deref().unwrap_or("no items");
+        println!("  \x1b[2m{}\x1b[0m", msg);
+        let secs = if timeout > 0 { timeout } else { 30 };
+        tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
         return Ok(());
     }
 
@@ -983,9 +996,25 @@ async fn cmd_select_daemon(
     writer.flush().await?;
 
     // Read broadcast messages until we get select-result or select-cancelled
+    let deadline = if timeout > 0 {
+        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(timeout))
+    } else {
+        None
+    };
     let selected_item = loop {
         line_buf.clear();
-        let n = buf_reader.read_line(&mut line_buf).await?;
+        let read_fut = buf_reader.read_line(&mut line_buf);
+        let n = if let Some(dl) = deadline {
+            match tokio::time::timeout_at(dl, read_fut).await {
+                Ok(Ok(n)) => n,
+                _ => break None, // timeout or error
+            }
+        } else {
+            match read_fut.await {
+                Ok(n) => n,
+                Err(_) => break None,
+            }
+        };
         if n == 0 {
             break None; // Connection closed
         }
@@ -1002,6 +1031,14 @@ async fn cmd_select_daemon(
             }
         }
     };
+
+    // If we exited due to timeout (no selection), cancel the popup
+    if selected_item.is_none() {
+        let cancel_msg =
+            serde_json::json!({"method": "select-cancel", "params": {}}).to_string() + "\n";
+        let _ = writer.write_all(cancel_msg.as_bytes()).await;
+        let _ = writer.flush().await;
+    }
 
     if let (Some(item), Some(action)) = (selected_item, on_enter) {
         let fields: Vec<&str> = item.split_whitespace().collect();
