@@ -2,6 +2,8 @@
 
 Terminal multiplexer for people who run a lot of things at once. Rust workspace, tokio async, always-daemon architecture.
 
+**Core value vs tmux**: tmux is a general-purpose multiplexer. jmux adds a live sidebar that shows what every pane across every session is doing — process name, agent state, busy/idle — without you switching to it. AI agent integration is a feature, not the identity. The target user runs servers, builds, REPLs, agents, and wants to stay oriented across all of them at a glance.
+
 ## Commands you'll actually need
 
 ```sh

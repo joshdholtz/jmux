@@ -20,6 +20,16 @@ Split your terminal into panes, manage sessions across projects, detach and reat
 
 ---
 
+## Why not tmux?
+
+If you're happy in tmux, stay there. tmux is excellent at what it does.
+
+jmux adds one thing tmux doesn't: **a live sidebar that shows what every pane across every session is doing, without you switching to it.** Pane names update automatically as commands run. If a process needs your attention — a prompt, an error, a build that finished — you see it in the sidebar before you've even moved your eyes.
+
+The other difference is framing. tmux is a general-purpose multiplexer you configure to fit your workflow. jmux is opinionated about one workflow: you have multiple projects open, each with multiple things running, and you want to stay oriented across all of them at a glance.
+
+---
+
 ## Features
 
 - **See what's running** — the sidebar shows every pane across every session, with the current command and whether it's busy, waiting, or idle
