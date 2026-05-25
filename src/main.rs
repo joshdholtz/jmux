@@ -923,7 +923,9 @@ fn cmd_select(on_enter: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let term_height = crossterm::terminal::size().map(|(_, h)| h as usize).unwrap_or(24);
+    let term_height = crossterm::terminal::size()
+        .map(|(_, h)| h as usize)
+        .unwrap_or(24);
     let count = lines.len();
 
     // How many items we can show (leave a couple rows for context above)
@@ -1050,7 +1052,10 @@ fn cmd_select(on_enter: Option<String>) -> Result<()> {
         for (i, field) in fields.iter().enumerate() {
             cmd = cmd.replace(&format!("{{{}}}", i + 1), field);
         }
-        std::process::Command::new("sh").arg("-c").arg(&cmd).status()?;
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .status()?;
     }
 
     Ok(())
