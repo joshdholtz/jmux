@@ -1,6 +1,6 @@
 # jmux — LLM context
 
-Terminal multiplexer built for AI agent workflows. Rust workspace, tokio async, always-daemon architecture.
+Terminal multiplexer for people who run a lot of things at once. Rust workspace, tokio async, always-daemon architecture.
 
 ## Commands you'll actually need
 
