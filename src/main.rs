@@ -153,14 +153,12 @@ async fn main() -> Result<()> {
             // Tell running daemon to close the session, then clean up saved state
             let state = build_state();
             let daemon_path = daemon_socket_path(&state);
-            if daemon_path.exists() {
-                if tokio::net::UnixStream::connect(&daemon_path).await.is_ok() {
-                    let req = serde_json::json!({
-                        "method": "kill-session",
-                        "params": { "name": &name }
-                    });
-                    let _ = send_socket_message(&daemon_path, &req.to_string()).await;
-                }
+            if daemon_path.exists() && tokio::net::UnixStream::connect(&daemon_path).await.is_ok() {
+                let req = serde_json::json!({
+                    "method": "kill-session",
+                    "params": { "name": &name }
+                });
+                let _ = send_socket_message(&daemon_path, &req.to_string()).await;
             }
             jmux_core::persistence::kill_session(&name)?;
         }

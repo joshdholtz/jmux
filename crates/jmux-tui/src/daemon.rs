@@ -136,12 +136,6 @@ pub async fn run_daemon(state: AppState, socket_path: &Path, rows: u16, cols: u1
     let daemon_poll = daemon.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let shell_bin = std::path::Path::new(&shell)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("shell")
-            .to_string();
         loop {
             interval.tick().await;
             let mut d = daemon_poll.lock().await;
