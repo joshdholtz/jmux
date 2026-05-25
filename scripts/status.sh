@@ -2,7 +2,7 @@
 # jmux project status pane — refreshes every 30s
 
 while true; do
-    stty -echo 2>/dev/null
+    stty -echo 2>/dev/null  # workaround: jmux should own input for display panes at the daemon level
     clear
 
     jmux header "jmux"
