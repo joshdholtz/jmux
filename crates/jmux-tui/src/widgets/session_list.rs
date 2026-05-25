@@ -71,6 +71,20 @@ pub fn render_session_list(f: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(Color::DarkGray)
             };
 
+            // Pane number hint (1-9) for ^A 1-9 jump shortcut; blank beyond 9.
+            let number_label = if j < 9 {
+                format!("{} ", j + 1)
+            } else {
+                "  ".to_string()
+            };
+            let number_style = if is_active_pane {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+
             // Record pane click rect (1 row)
             let pane_rect = Rect {
                 x: area.x + 1,
@@ -85,6 +99,7 @@ pub fn render_session_list(f: &mut Frame, area: Rect, app: &App) {
 
             items.push(ListItem::new(Line::from(vec![
                 Span::styled(if is_active_pane { "  ▸ " } else { "    " }, pane_style),
+                Span::styled(number_label, number_style),
                 Span::styled(
                     format!("{} ", pane.process_name.as_deref().unwrap_or(&pane.name)),
                     pane_style,
