@@ -1,8 +1,14 @@
 #!/bin/sh
 # jmux project status pane — refreshes every 30s
 
+_first_run=1
 while true; do
     stty -echo 2>/dev/null  # workaround: jmux should own input for display panes at the daemon level
+    # On first run, wait for the daemon to send resize-pane so terminal_width() is correct
+    if [ "$_first_run" = "1" ]; then
+        sleep 0.5
+        _first_run=0
+    fi
     clear
 
     jmux header "jmux"
