@@ -7,7 +7,6 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use jmux_core::persistence::SavedSession;
 use jmux_core::{AgentState, AppState, PaneState, Session};
 use jmux_tui::{run_daemon, App, DaemonClient};
 use ratatui::{backend::CrosstermBackend, Terminal};
