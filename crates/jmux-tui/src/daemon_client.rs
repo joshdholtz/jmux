@@ -97,7 +97,13 @@ impl DaemonClient {
         Ok(())
     }
 
-    pub async fn send_pane_resize(&self, session_id: usize, pane_id: usize, rows: u16, cols: u16) -> Result<()> {
+    pub async fn send_pane_resize(
+        &self,
+        session_id: usize,
+        pane_id: usize,
+        rows: u16,
+        cols: u16,
+    ) -> Result<()> {
         let msg = serde_json::json!({
             "method": "resize-pane",
             "params": { "session_id": session_id, "pane_id": pane_id, "rows": rows, "cols": cols }

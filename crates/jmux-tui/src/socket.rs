@@ -8,10 +8,21 @@ use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub enum SocketEvent {
-    SetStatus { state: AgentState, session_id: Option<usize>, pane_id: Option<usize> },
-    Flash { session_id: Option<usize>, pane_id: Option<usize> },
-    NewSession { path: PathBuf },
-    SetCwd { path: PathBuf },
+    SetStatus {
+        state: AgentState,
+        session_id: Option<usize>,
+        pane_id: Option<usize>,
+    },
+    Flash {
+        session_id: Option<usize>,
+        pane_id: Option<usize>,
+    },
+    NewSession {
+        path: PathBuf,
+    },
+    SetCwd {
+        path: PathBuf,
+    },
 }
 
 pub async fn run_socket_server(path: PathBuf, tx: mpsc::Sender<SocketEvent>) -> Result<()> {
@@ -35,22 +46,45 @@ pub async fn run_socket_server(path: PathBuf, tx: mpsc::Sender<SocketEvent>) -> 
                             Ok(req) => match req.method.as_str() {
                                 "set-status" => match parse_set_status(&req.params) {
                                     Ok(state) => {
-                                        let session_id = req.params.get("session_id")
-                                            .and_then(|v| v.as_u64()).map(|v| v as usize);
-                                        let pane_id = req.params.get("pane_id")
-                                            .and_then(|v| v.as_u64()).map(|v| v as usize);
-                                        let _ = tx.send(SocketEvent::SetStatus { state, session_id, pane_id }).await;
+                                        let session_id = req
+                                            .params
+                                            .get("session_id")
+                                            .and_then(|v| v.as_u64())
+                                            .map(|v| v as usize);
+                                        let pane_id = req
+                                            .params
+                                            .get("pane_id")
+                                            .and_then(|v| v.as_u64())
+                                            .map(|v| v as usize);
+                                        let _ = tx
+                                            .send(SocketEvent::SetStatus {
+                                                state,
+                                                session_id,
+                                                pane_id,
+                                            })
+                                            .await;
                                     }
                                     Err(e) => {
                                         eprintln!("jmux socket: bad set-status params: {}", e);
                                     }
                                 },
                                 "flash" => {
-                                    let session_id = req.params.get("session_id")
-                                        .and_then(|v| v.as_u64()).map(|v| v as usize);
-                                    let pane_id = req.params.get("pane_id")
-                                        .and_then(|v| v.as_u64()).map(|v| v as usize);
-                                    let _ = tx.send(SocketEvent::Flash { session_id, pane_id }).await;
+                                    let session_id = req
+                                        .params
+                                        .get("session_id")
+                                        .and_then(|v| v.as_u64())
+                                        .map(|v| v as usize);
+                                    let pane_id = req
+                                        .params
+                                        .get("pane_id")
+                                        .and_then(|v| v.as_u64())
+                                        .map(|v| v as usize);
+                                    let _ = tx
+                                        .send(SocketEvent::Flash {
+                                            session_id,
+                                            pane_id,
+                                        })
+                                        .await;
                                 }
                                 "new-session" => {
                                     if let Some(path_str) =

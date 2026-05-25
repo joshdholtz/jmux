@@ -387,7 +387,10 @@ impl App {
 
             // Check for terminal input after the sleep branch
             if event::poll(std::time::Duration::from_millis(0))? {
-                let focus_before = self.state.sessions.get(self.state.active_session)
+                let focus_before = self
+                    .state
+                    .sessions
+                    .get(self.state.active_session)
                     .map(|s| (s.id, s.panes.get(s.active_pane).map(|p| p.id).unwrap_or(0)));
 
                 match event::read()? {
@@ -565,18 +568,26 @@ impl App {
                 }
 
                 // If the focused pane changed, tell the daemon so it can clear Waiting state
-                let focus_after = self.state.sessions.get(self.state.active_session)
+                let focus_after = self
+                    .state
+                    .sessions
+                    .get(self.state.active_session)
                     .map(|s| (s.id, s.panes.get(s.active_pane).map(|p| p.id).unwrap_or(0)));
                 if focus_after != focus_before {
-                    if let (Some((sess_id, pane_id)), Some(ref client)) = (focus_after, &self.daemon_client) {
+                    if let (Some((sess_id, pane_id)), Some(ref client)) =
+                        (focus_after, &self.daemon_client)
+                    {
                         let writer = client.writer.clone();
                         let msg = serde_json::json!({
                             "method": "focus-pane",
                             "params": { "session_id": sess_id, "pane_id": pane_id }
-                        }).to_string() + "\n";
+                        })
+                        .to_string()
+                            + "\n";
                         tokio::spawn(async move {
                             let mut w = writer.lock().await;
-                            let _ = tokio::io::AsyncWriteExt::write_all(&mut *w, msg.as_bytes()).await;
+                            let _ =
+                                tokio::io::AsyncWriteExt::write_all(&mut *w, msg.as_bytes()).await;
                         });
                     }
                 }
@@ -742,7 +753,10 @@ impl App {
         let new_session_id = self.state.sessions.iter().map(|s| s.id).max().unwrap_or(0) + 1;
         let shell_name = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
         let shell_bin = std::path::Path::new(&shell_name)
-            .file_name().and_then(|n| n.to_str()).unwrap_or("shell").to_string();
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("shell")
+            .to_string();
         let pane = PaneState {
             id: 0,
             name: shell_bin,
@@ -792,7 +806,9 @@ impl App {
                     let msg = serde_json::json!({
                         "method": "add-pane",
                         "params": { "session_id": session_id, "cwd": cwd_str }
-                    }).to_string() + "\n";
+                    })
+                    .to_string()
+                        + "\n";
                     let mut w = writer.lock().await;
                     let _ = tokio::io::AsyncWriteExt::write_all(&mut *w, msg.as_bytes()).await;
                 });
@@ -803,7 +819,10 @@ impl App {
             let new_id = session.panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
             let shell_name = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
             let shell_bin = std::path::Path::new(&shell_name)
-                .file_name().and_then(|n| n.to_str()).unwrap_or("shell").to_string();
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("shell")
+                .to_string();
             let new_pane = PaneState {
                 id: new_id,
                 name: shell_bin,
@@ -818,8 +837,14 @@ impl App {
             }
             let (rows, cols) = self.last_size;
             if let Ok(pty) = crate::pty::PtyPane::spawn(
-                session_id, new_id, &cwd, rows, cols,
-                &self.socket_path, self.pty_tx.clone(), None,
+                session_id,
+                new_id,
+                &cwd,
+                rows,
+                cols,
+                &self.socket_path,
+                self.pty_tx.clone(),
+                None,
             ) {
                 self.ptys.insert((session_id, new_id), pty);
             }
@@ -835,7 +860,9 @@ impl App {
                 let msg = serde_json::json!({
                     "method": "close-pane",
                     "params": { "session_id": session_id, "pane_id": pane_id }
-                }).to_string() + "\n";
+                })
+                .to_string()
+                    + "\n";
                 let mut w = writer.lock().await;
                 let _ = tokio::io::AsyncWriteExt::write_all(&mut *w, msg.as_bytes()).await;
             });
@@ -877,10 +904,15 @@ impl App {
             let rows = rect.height.saturating_sub(2).max(1);
 
             // Check BEFORE updating so we know whether to send to daemon
-            let changed = self.ptys.get(&(*sess_id, *pane_id))
+            let changed = self
+                .ptys
+                .get(&(*sess_id, *pane_id))
                 .map(|p| p.cols != cols || p.rows != rows)
-                .or_else(|| self.client_ptys.get(&(*sess_id, *pane_id))
-                    .map(|p| p.cols != cols || p.rows != rows))
+                .or_else(|| {
+                    self.client_ptys
+                        .get(&(*sess_id, *pane_id))
+                        .map(|p| p.cols != cols || p.rows != rows)
+                })
                 .unwrap_or(true);
 
             if let Some(pty) = self.ptys.get_mut(&(*sess_id, *pane_id)) {
@@ -944,7 +976,12 @@ impl App {
         }
     }
 
-    fn apply_set_status(&mut self, state: AgentState, session_id: Option<usize>, pane_id: Option<usize>) {
+    fn apply_set_status(
+        &mut self,
+        state: AgentState,
+        session_id: Option<usize>,
+        pane_id: Option<usize>,
+    ) {
         let session = match session_id {
             Some(sid) => self.state.sessions.iter_mut().find(|s| s.id == sid),
             None => self.state.sessions.get_mut(self.state.active_session),

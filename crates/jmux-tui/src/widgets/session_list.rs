@@ -64,7 +64,9 @@ pub fn render_session_list(f: &mut Frame, area: Rect, app: &App) {
             };
 
             let pane_style = if is_active_pane {
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray)
             };
@@ -82,10 +84,7 @@ pub fn render_session_list(f: &mut Frame, area: Rect, app: &App) {
             content_row += 1;
 
             items.push(ListItem::new(Line::from(vec![
-                Span::styled(
-                    if is_active_pane { "  ▸ " } else { "    " },
-                    pane_style,
-                ),
+                Span::styled(if is_active_pane { "  ▸ " } else { "    " }, pane_style),
                 Span::styled(
                     format!("{} ", pane.process_name.as_deref().unwrap_or(&pane.name)),
                     pane_style,

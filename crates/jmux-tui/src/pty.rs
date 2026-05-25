@@ -255,7 +255,11 @@ fn fg_process_name(pid: u32) -> Option<String> {
         .output()
         .ok()?;
     let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if name.is_empty() { None } else { Some(name) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 fn strip_ansi(data: &[u8]) -> String {

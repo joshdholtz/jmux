@@ -66,9 +66,11 @@ async fn main() -> Result<()> {
             let Ok(socket_path) = get_socket_path() else {
                 return Ok(()); // not in a jmux session — silently succeed
             };
-            let session_id = std::env::var("JMUX_SESSION_ID").ok()
+            let session_id = std::env::var("JMUX_SESSION_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
-            let pane_id = std::env::var("JMUX_PANE_ID").ok()
+            let pane_id = std::env::var("JMUX_PANE_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
             let req = serde_json::json!({
                 "method": "set-status",
@@ -85,9 +87,11 @@ async fn main() -> Result<()> {
             let Ok(socket_path) = get_socket_path() else {
                 return Ok(()); // not in a jmux session — silently succeed
             };
-            let session_id = std::env::var("JMUX_SESSION_ID").ok()
+            let session_id = std::env::var("JMUX_SESSION_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
-            let pane_id = std::env::var("JMUX_PANE_ID").ok()
+            let pane_id = std::env::var("JMUX_PANE_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
             let req = serde_json::json!({
                 "method": "flash",
@@ -170,10 +174,14 @@ async fn main() -> Result<()> {
             }
         }
         Command::SetName { name } => {
-            let Ok(socket_path) = get_socket_path() else { return Ok(()); };
-            let session_id = std::env::var("JMUX_SESSION_ID").ok()
+            let Ok(socket_path) = get_socket_path() else {
+                return Ok(());
+            };
+            let session_id = std::env::var("JMUX_SESSION_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
-            let pane_id = std::env::var("JMUX_PANE_ID").ok()
+            let pane_id = std::env::var("JMUX_PANE_ID")
+                .ok()
                 .and_then(|s| s.parse::<u64>().ok());
             let req = serde_json::json!({
                 "method": "set-name",
@@ -226,10 +234,12 @@ async fn cmd_daemon() -> Result<()> {
     std::env::set_var("JMUX_SOCKET", &socket_path);
 
     let size = crossterm::terminal::size().unwrap_or((200, 50));
-    let cols = std::env::var("JMUX_INITIAL_COLS").ok()
+    let cols = std::env::var("JMUX_INITIAL_COLS")
+        .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(size.0);
-    let rows = std::env::var("JMUX_INITIAL_ROWS").ok()
+    let rows = std::env::var("JMUX_INITIAL_ROWS")
+        .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(size.1.saturating_sub(2));
 
@@ -264,10 +274,14 @@ async fn run_tui() -> Result<()> {
 
     // Connect to existing daemon if already running and not outdated
     if daemon_path.exists() {
-        let binary_newer = std::env::current_exe().ok()
-            .and_then(|exe| std::fs::metadata(&exe).ok()?.modified().ok()
+        let binary_newer = std::env::current_exe().ok().and_then(|exe| {
+            std::fs::metadata(&exe)
+                .ok()?
+                .modified()
+                .ok()
                 .zip(std::fs::metadata(&daemon_path).ok()?.modified().ok())
-                .map(|(exe_t, sock_t)| exe_t > sock_t));
+                .map(|(exe_t, sock_t)| exe_t > sock_t)
+        });
 
         if binary_newer == Some(true) {
             // Rebuilt binary — kill old daemon so we start fresh
@@ -306,7 +320,10 @@ async fn run_tui() -> Result<()> {
     std::process::Command::new(&exe)
         .arg("daemon")
         .env("JMUX_INITIAL_COLS", term_size.0.to_string())
-        .env("JMUX_INITIAL_ROWS", term_size.1.saturating_sub(2).to_string())
+        .env(
+            "JMUX_INITIAL_ROWS",
+            term_size.1.saturating_sub(2).to_string(),
+        )
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
