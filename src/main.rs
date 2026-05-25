@@ -52,6 +52,23 @@ enum Command {
     Kill {
         name: String,
     },
+    Header {
+        text: String,
+    },
+    Divider,
+    Table {
+        /// Column names (first row will be treated as header if not provided)
+        #[arg(long)]
+        columns: Option<Vec<String>>,
+    },
+    Row {
+        fields: Vec<String>,
+    },
+    Select {
+        /// Shell command to run on selection. Use {1}, {2}... for fields of selected row.
+        #[arg(long)]
+        on_enter: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -169,6 +186,21 @@ async fn main() -> Result<()> {
                 });
                 let _ = send_socket_message(&socket_path, &req.to_string()).await;
             }
+        }
+        Command::Header { text } => {
+            cmd_fmt_header(&text);
+        }
+        Command::Divider => {
+            cmd_fmt_divider();
+        }
+        Command::Table { columns } => {
+            cmd_fmt_table(columns)?;
+        }
+        Command::Row { fields } => {
+            cmd_fmt_row(&fields);
+        }
+        Command::Select { on_enter } => {
+            cmd_select(on_enter)?;
         }
         Command::SetName { name } => {
             let Ok(socket_path) = get_socket_path() else {
@@ -765,6 +797,280 @@ fn find_real_codex(home: &std::path::Path) -> Result<String> {
     // is first in PATH — warn about this)
     println!("⚠️  Could not find 'codex' binary in PATH. Make sure it's installed before the wrapper runs.");
     Ok("codex".to_string())
+}
+
+fn cmd_fmt_header(text: &str) {
+    let width = terminal_width();
+    let line = "─".repeat(width);
+    println!("{BOLD}{CYAN}{}{RESET}", text);
+    println!("{DIM}{}{RESET}", line);
+}
+
+fn cmd_fmt_divider() {
+    let width = terminal_width();
+    println!("{DIM}{}{RESET}", "─".repeat(width));
+}
+
+fn cmd_fmt_row(fields: &[String]) {
+    let row = fields.join("  ");
+    println!("{}", row);
+}
+
+fn cmd_fmt_table(columns: Option<Vec<String>>) -> Result<()> {
+    use std::io::BufRead;
+
+    let stdin = std::io::stdin();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+
+    for line in stdin.lock().lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let fields: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+        rows.push(fields);
+    }
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let col_count = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let headers: Option<Vec<String>> = columns.filter(|c| !c.is_empty());
+
+    // Compute column widths
+    let mut widths = vec![0usize; col_count];
+    if let Some(hdrs) = &headers {
+        for (i, h) in hdrs.iter().enumerate() {
+            if i < col_count {
+                widths[i] = widths[i].max(h.len());
+            }
+        }
+    } else if !rows.is_empty() {
+        // First row is the header
+        for (i, cell) in rows[0].iter().enumerate() {
+            if i < col_count {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+    }
+    for row in &rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i < col_count {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+    }
+
+    let print_row = |row: &[String], bold: bool| {
+        let styled: Vec<String> = row
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                let w = widths.get(i).copied().unwrap_or(0);
+                if bold {
+                    format!("{BOLD}{:<w$}{RESET}", cell, w = w)
+                } else {
+                    format!("{:<w$}", cell, w = w)
+                }
+            })
+            .collect();
+        println!("  {}", styled.join("  "));
+    };
+
+    let sep_width = widths.iter().sum::<usize>() + widths.len().saturating_sub(1) * 2 + 2;
+
+    if let Some(hdrs) = &headers {
+        print_row(hdrs, true);
+        println!("{DIM}{}{RESET}", "─".repeat(sep_width));
+        for row in &rows {
+            print_row(row, false);
+        }
+    } else {
+        // First row is header
+        print_row(&rows[0], true);
+        println!("{DIM}{}{RESET}", "─".repeat(sep_width));
+        for row in rows.iter().skip(1) {
+            print_row(row, false);
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_select(on_enter: Option<String>) -> Result<()> {
+    use std::io::{BufRead, Write};
+
+    use crossterm::{
+        cursor::{Hide, MoveTo, Show},
+        event::{
+            self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseButton,
+            MouseEventKind,
+        },
+        execute,
+        terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    };
+
+    let stdin = std::io::stdin();
+    let lines: Vec<String> = stdin
+        .lock()
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+
+    if lines.is_empty() {
+        return Ok(());
+    }
+
+    let term_height = crossterm::terminal::size().map(|(_, h)| h as usize).unwrap_or(24);
+    let count = lines.len();
+
+    // How many items we can show (leave a couple rows for context above)
+    let visible_max = term_height.saturating_sub(2).max(3);
+    let visible = count.min(visible_max);
+
+    let mut selected = 0usize;
+    let mut scroll_offset = 0usize; // top of visible window
+
+    let mut stdout = std::io::stdout();
+
+    // Print the list initially so the terminal scrolls to make room
+    for (i, line) in lines.iter().take(visible).enumerate() {
+        select_render_row(&mut stdout, line, i == selected)?;
+    }
+    stdout.flush()?;
+
+    // Cursor is now below the list; remember start row
+    let (_, cursor_y) = crossterm::cursor::position().unwrap_or((0, visible as u16));
+    let start_row = cursor_y.saturating_sub(visible as u16);
+
+    enable_raw_mode()?;
+    execute!(stdout, EnableMouseCapture, Hide)?;
+
+    let selected_line = loop {
+        let redraw_start = scroll_offset;
+        let redraw_end = (scroll_offset + visible).min(count);
+
+        execute!(stdout, MoveTo(0, start_row))?;
+        for (vi, li) in (redraw_start..redraw_end).enumerate() {
+            execute!(stdout, Clear(ClearType::CurrentLine))?;
+            select_render_row(&mut stdout, &lines[li], li == selected)?;
+            // move to next line manually (print! won't scroll in raw mode)
+            execute!(stdout, MoveTo(0, start_row + vi as u16 + 1))?;
+        }
+        // Scroll hint
+        let hint = if count > visible {
+            format!(
+                " {DIM}({}/{}) ↑↓ navigate · enter open · q cancel{RESET}",
+                selected + 1,
+                count
+            )
+        } else {
+            format!(" {DIM}↑↓ navigate · enter open · q cancel{RESET}")
+        };
+        execute!(stdout, Clear(ClearType::CurrentLine))?;
+        print!("{}", hint);
+        stdout.flush()?;
+
+        match event::read()? {
+            Event::Key(k) => match k.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if selected > 0 {
+                        selected -= 1;
+                        if selected < scroll_offset {
+                            scroll_offset = selected;
+                        }
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if selected + 1 < count {
+                        selected += 1;
+                        if selected >= scroll_offset + visible {
+                            scroll_offset = selected + 1 - visible;
+                        }
+                    }
+                }
+                KeyCode::Enter => break Some(selected),
+                KeyCode::Esc | KeyCode::Char('q') => break None,
+                _ => {}
+            },
+            Event::Mouse(m) => match m.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    let clicked_vi = m.row.saturating_sub(start_row) as usize;
+                    let clicked_li = scroll_offset + clicked_vi;
+                    if clicked_li < count {
+                        if selected == clicked_li {
+                            break Some(selected);
+                        }
+                        selected = clicked_li;
+                        if selected >= scroll_offset + visible {
+                            scroll_offset = selected + 1 - visible;
+                        }
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    if selected > 0 {
+                        selected -= 1;
+                        if selected < scroll_offset {
+                            scroll_offset = selected;
+                        }
+                    }
+                }
+                MouseEventKind::ScrollDown => {
+                    if selected + 1 < count {
+                        selected += 1;
+                        if selected >= scroll_offset + visible {
+                            scroll_offset = selected + 1 - visible;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    };
+
+    execute!(stdout, DisableMouseCapture, Show)?;
+    disable_raw_mode()?;
+
+    // Clear the select UI
+    execute!(stdout, MoveTo(0, start_row))?;
+    for _ in 0..=visible {
+        execute!(stdout, Clear(ClearType::CurrentLine))?;
+        println!();
+    }
+    execute!(stdout, MoveTo(0, start_row))?;
+    stdout.flush()?;
+
+    if let (Some(idx), Some(action)) = (selected_line, on_enter) {
+        let line = &lines[idx];
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let mut cmd = action.clone();
+        for (i, field) in fields.iter().enumerate() {
+            cmd = cmd.replace(&format!("{{{}}}", i + 1), field);
+        }
+        std::process::Command::new("sh").arg("-c").arg(&cmd).status()?;
+    }
+
+    Ok(())
+}
+
+fn select_render_row(stdout: &mut std::io::Stdout, line: &str, is_selected: bool) -> Result<()> {
+    use std::io::Write;
+    if is_selected {
+        print!("\x1b[48;5;238m\x1b[1m  ▶ {}{RESET}", line);
+    } else {
+        print!("    {}", line);
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
+fn terminal_width() -> usize {
+    crossterm::terminal::size()
+        .map(|(w, _)| w as usize)
+        .unwrap_or(80)
 }
 
 fn setup_claude() -> Result<()> {

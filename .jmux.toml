@@ -1,0 +1,10 @@
+[project]
+name = "jmux"
+
+[[panes]]
+name = "claude"
+cmd = "claude"
+
+[[panes]]
+name = "status"
+cmd = "./scripts/status.sh"
