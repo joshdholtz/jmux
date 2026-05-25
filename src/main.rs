@@ -68,6 +68,12 @@ enum Command {
         /// Shell command to run on selection. Use {1}, {2}... for fields of selected row.
         #[arg(long)]
         on_enter: Option<String>,
+        /// Message to show when no items are available (waits in raw mode until timeout).
+        #[arg(long)]
+        empty_message: Option<String>,
+        /// Auto-exit after this many seconds (0 = wait forever).
+        #[arg(long, default_value = "0")]
+        timeout: u64,
     },
 }
 
@@ -199,8 +205,12 @@ async fn main() -> Result<()> {
         Command::Row { fields } => {
             cmd_fmt_row(&fields);
         }
-        Command::Select { on_enter } => {
-            cmd_select(on_enter)?;
+        Command::Select {
+            on_enter,
+            empty_message,
+            timeout,
+        } => {
+            cmd_select(on_enter, empty_message, timeout)?;
         }
         Command::SetName { name } => {
             let Ok(socket_path) = get_socket_path() else {
@@ -898,8 +908,9 @@ fn cmd_fmt_table(columns: Option<Vec<String>>) -> Result<()> {
     Ok(())
 }
 
-fn cmd_select(on_enter: Option<String>) -> Result<()> {
+fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: u64) -> Result<()> {
     use std::io::{BufRead, Write};
+    use std::time::{Duration, Instant};
 
     use crossterm::{
         cursor::{Hide, MoveTo, Show},
@@ -920,6 +931,35 @@ fn cmd_select(on_enter: Option<String>) -> Result<()> {
         .collect();
 
     if lines.is_empty() {
+        // Raw mode so keystrokes are absorbed silently rather than echoed
+        let msg = empty_message.as_deref().unwrap_or("no items");
+        let mut stdout = std::io::stdout();
+        println!("  {DIM}{}{RESET}", msg);
+        stdout.flush()?;
+        enable_raw_mode()?;
+        execute!(stdout, Hide)?;
+        let deadline = if timeout > 0 {
+            Some(Instant::now() + Duration::from_secs(timeout))
+        } else {
+            None
+        };
+        loop {
+            let wait = deadline
+                .map(|d| d.saturating_duration_since(Instant::now()))
+                .unwrap_or(Duration::from_secs(3600));
+            if wait.is_zero() {
+                break;
+            }
+            if event::poll(wait)? {
+                if let Event::Key(_) = event::read()? {
+                    break;
+                }
+            } else {
+                break; // timeout elapsed
+            }
+        }
+        execute!(stdout, Show)?;
+        disable_raw_mode()?;
         return Ok(());
     }
 
@@ -950,6 +990,12 @@ fn cmd_select(on_enter: Option<String>) -> Result<()> {
     enable_raw_mode()?;
     execute!(stdout, EnableMouseCapture, Hide)?;
 
+    let deadline = if timeout > 0 {
+        Some(Instant::now() + Duration::from_secs(timeout))
+    } else {
+        None
+    };
+
     let selected_line = loop {
         let redraw_start = scroll_offset;
         let redraw_end = (scroll_offset + visible).min(count);
@@ -975,6 +1021,15 @@ fn cmd_select(on_enter: Option<String>) -> Result<()> {
         print!("{}", hint);
         stdout.flush()?;
 
+        let wait = deadline
+            .map(|d| d.saturating_duration_since(Instant::now()))
+            .unwrap_or(Duration::from_secs(3600));
+        if wait.is_zero() {
+            break None;
+        }
+        if !event::poll(wait)? {
+            break None; // timeout
+        }
         match event::read()? {
             Event::Key(k) => match k.code {
                 KeyCode::Up | KeyCode::Char('k') => {

@@ -24,16 +24,13 @@ while true; do
     printf "\n"
     jmux header "Open PRs"
     if command -v gh >/dev/null 2>&1; then
-        PR_LIST=$(gh pr list --limit 20 --json number,title,isDraft \
-            --template '{{range .}}{{if not .isDraft}}#{{.number}}  {{.title}}{{"\n"}}{{end}}{{end}}' 2>/dev/null)
-        if [ -n "$PR_LIST" ]; then
-            printf "%s\n" "$PR_LIST" | jmux select --on-enter "gh pr view {1} --web"
-        else
-            printf "  no open PRs\n"
-            read -t 30 _ 2>/dev/null || true
-        fi
+        gh pr list --limit 20 --json number,title,isDraft \
+            --template '{{range .}}{{if not .isDraft}}#{{.number}}  {{.title}}{{"\n"}}{{end}}{{end}}' 2>/dev/null \
+            | jmux select --on-enter "gh pr view {1} --web" \
+                          --empty-message "no open PRs" \
+                          --timeout 30
     else
         printf "  (gh not installed)\n"
-        read -t 30 _ 2>/dev/null || true
+        sleep 30
     fi
 done
