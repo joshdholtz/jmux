@@ -1,72 +1,62 @@
 # jmux
 
-Terminal multiplexer built for developers running AI coding agents.
+Terminal multiplexer built for AI agent workflows.
 
-jmux works like tmux or GNU Screen — split your terminal into panes, manage sessions, detach and reattach — but it also watches what your agents are doing and shows live state on every pane border. When Claude Code is thinking, the border animates. When it needs input, it pulses yellow. When it errors, it turns red. You can run a dozen agents across a dozen projects and see who needs attention at a glance.
+jmux works like tmux — split your terminal into panes, manage sessions, detach and reattach — but it also watches what your agents are doing and shows live status on every pane border. When Claude Code is thinking, the border pulses. When it needs input, it flashes yellow. You can run multiple agents across multiple projects and see who needs attention at a glance.
 
 ```
-┌─ my-app ──────────────────────────────────────────────────┐
-│  ⠋ [1] agent        ● [2] server        ○ [3] shell       │
-╠══════════════════════════════════╦════════════════════════╣
-║ > claude                         ║ > cargo run            ║
-║ Analyzing your codebase...       ║ Compiling my-app v0.1  ║
-║ ...                              ║ ...                    ║
-╚══════════════════════════════════╩════════════════════════╝
-  [working]                          [idle]
+╔═ jmux [working ⣾] ══════════════════════════════════════════════════════════╗
+║ Sessions              ║                                                      ║
+║ ▶ jmux                ║  > claude                                            ║
+║   ▸ claude ⣾          ║  Analyzing your codebase...                          ║
+║     shell ·           ║                                                      ║
+║                       ╠══════════════════════════════════════════════════════╣
+║                       ║  > cargo build                                       ║
+║                       ║  Compiling jmux v0.1.0                               ║
+╚═══════════════════════╩══════════════════════════════════════════════════════╝
 ```
 
 ---
 
 ## Features
 
-- **Agent state indicators** — pane borders animate to show working / waiting / error states for Claude Code, Codex, and any custom agent
-- **GNU Screen keybindings** — `ctrl-a` prefix, muscle memory transfers immediately
-- **Daemon mode** — detach and reattach without killing your shells or agents
-- **Project awareness** — auto-detects git root, project name, and restores pane layouts per project
+- **Agent state indicators** — pane borders animate to show working/waiting/error for Claude Code, Codex, Aider, Gemini, and any custom tool
+- **Always-daemon architecture** — `jmux` auto-spawns a background daemon and attaches; detach and reattach without killing shells or agents
+- **GNU Screen keybindings** — `ctrl-a` prefix; muscle memory transfers immediately
+- **Project awareness** — auto-detects git root, names sessions by project, restores pane layouts
 - **`.jmux.toml` config** — define panes and startup commands per project
 - **Fuzzy project picker** — `ctrl-a f` to jump between projects
-- **Shell integration** — `chpwd` hook keeps pane directories in sync; `j` alias for quick navigation
-- **Narrow mode** — automatically switches to a compact layout when terminal width drops below 100 columns
+- **Shell integration** — `chpwd` and `preexec` hooks keep pane state in sync
+- **Sidebar** — shows all sessions and panes with live agent state icons
+- **Dimmed inactive panes** — unfocused panes render at reduced intensity
 
 ---
 
 ## Installation
 
-### Homebrew (macOS)
+### Cargo (from source)
 
 ```sh
-brew install --HEAD joshholtz/jmux/jmux
-```
-
-Or with the local formula:
-
-```sh
-brew install --formula Formula/jmux.rb
-```
-
-### Cargo
-
-```sh
+git clone https://github.com/joshdholtz/jmux
+cd jmux
 cargo install --path .
 ```
 
-Requires Rust 1.70+ (2021 edition).
+Requires Rust 1.70+.
 
-### Shell integration (recommended)
+### Shell integration
 
 Add to `~/.zshrc`:
-
 ```sh
 eval "$(jmux init zsh)"
 ```
 
 Or for bash, add to `~/.bashrc`:
-
 ```sh
 eval "$(jmux init bash)"
 ```
 
-This adds a `chpwd` hook so jmux tracks directory changes inside panes, and installs a `j` alias for quick session switching.
+This adds hooks so jmux tracks directory changes and running commands inside panes, and installs a `j` alias for quick session switching.
 
 ---
 
@@ -77,15 +67,11 @@ cd ~/projects/my-app
 jmux
 ```
 
-That's it. jmux detects the git root, names the session after the project, and opens a shell pane. If a `.jmux.toml` exists in the project root, it uses that instead.
-
-If a daemon is already running for this project, `jmux` attaches to it automatically.
+jmux detects the git root, names the session after the project, and opens a shell pane. If a daemon is already running for this project, `jmux` attaches to it automatically.
 
 ---
 
 ## Agent setup
-
-This is the main reason jmux exists. Run one of these once per machine:
 
 ### Claude Code
 
@@ -93,45 +79,71 @@ This is the main reason jmux exists. Run one of these once per machine:
 jmux setup claude
 ```
 
-Merges three hooks into `~/.claude/settings.json`:
+Merges hooks into `~/.claude/settings.json`:
 
-- `PreToolUse` — marks the pane as working
-- `PostToolUse` — marks the pane as idle
-- `Stop` — marks the pane as waiting for input
+- `PreToolUse` → marks the pane as **working**
+- `PostToolUse` → marks the pane as **working**
+- `Stop` → marks the pane as **idle**
 
-The hooks are safe to add alongside existing hooks. If jmux hooks are already present, the command skips them.
+Safe to run multiple times — existing jmux hooks are replaced, other hooks are left alone.
 
-### Codex
+### Codex / Aider / Gemini
 
 ```sh
 jmux setup codex
+jmux setup aider
+jmux setup gemini
+jmux setup all       # set up every tool found in PATH
 ```
 
-Installs a transparent wrapper at `~/.local/bin/codex` that reports state to jmux before and after each run. The wrapper is a no-op outside a jmux session, so it doesn't affect your normal workflow.
+Installs a transparent wrapper at `~/.local/bin/<tool>` that reports working/idle state to jmux. The wrapper is a no-op outside a jmux session.
 
 Make sure `~/.local/bin` is early in your `PATH`:
-
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Agent state indicators
+### Custom tool — OSC sequence
 
-| Border style | Meaning |
-|---|---|
-| Plain white | Idle — agent not running or waiting |
-| Animated blue double border + braille spinner (⠋) | Working — agent is actively running |
-| Pulsing yellow/amber border + ⚡ | Waiting — agent needs your input |
-| Red double border + ✗ | Error — agent exited with a failure |
+Any tool can report state without needing `JMUX_SOCKET`:
+
+```sh
+printf '\e]9999;state=working;message=running tests\a'
+printf '\e]9999;state=idle\a'
+printf '\e]9999;state=waiting;message=needs approval\a'
+printf '\e]9999;state=error;message=build failed\a'
+```
+
+### Custom tool — CLI
+
+```sh
+jmux set-status working "running tests"
+jmux set-status idle
+jmux set-status waiting "needs your input"
+jmux set-status error "build failed"
+```
+
+These are no-ops when `JMUX_SOCKET` is not set (i.e. outside a jmux session).
+
+---
+
+## Agent state indicators
+
+| Icon | Border | Meaning |
+|------|--------|---------|
+| `·` | normal | Idle |
+| `⣾` | animated blue double | Working |
+| `⚡` | yellow | Waiting for input |
+| `✗` | red double | Error |
 
 ---
 
 ## Keybindings
 
-All keybindings use the `ctrl-a` prefix (GNU Screen style).
+All use the `ctrl-a` prefix (GNU Screen style).
 
 | Key | Action |
-|---|---|
+|-----|--------|
 | `ctrl-a n` | Next pane |
 | `ctrl-a p` | Previous pane |
 | `ctrl-a N` | Next session |
@@ -140,179 +152,85 @@ All keybindings use the `ctrl-a` prefix (GNU Screen style).
 | `ctrl-a x` | Close active pane |
 | `ctrl-a ,` | Rename active pane |
 | `ctrl-a z` | Zoom / unzoom active pane |
-| `ctrl-a [` or `PageUp` | Enter scrollback / copy mode |
+| `ctrl-a [` or `PageUp` | Enter scrollback mode |
 | `ctrl-a 1`–`9` | Jump to pane by number |
-| `ctrl-a d` | Detach TUI (daemon keeps running); or show dashboard in standalone mode |
+| `ctrl-a d` | Detach (daemon keeps running) |
 | `ctrl-a f` | Fuzzy project picker |
 | `ctrl-a q` | Quit |
 
 ### Scrollback mode
 
-Enter with `ctrl-a [` or `PageUp`. Exit with `q`.
+Enter with `ctrl-a [` or `PageUp`. Exit with `q` or `Esc`.
 
 | Key | Action |
-|---|---|
-| `j` / `k` | Scroll down / up one line |
-| `ctrl-d` / `ctrl-u` | Scroll down / up half page |
-| `g` | Jump to top |
-| `G` | Jump to bottom |
-| `q` | Exit scrollback mode |
-
----
-
-## Daemon mode
-
-Run jmux as a background daemon so your shells and agents keep running after you close the terminal.
-
-### Start the daemon
-
-```sh
-jmux daemon
-```
-
-The daemon owns all PTYs for the current project. Its socket is at `/tmp/jmux-daemon-{hash}.sock`, where the hash is derived from the project root path — so each project gets its own daemon.
-
-### Attach
-
-```sh
-jmux
-```
-
-If a daemon is running for the current project directory, `jmux` connects to it automatically. No flags needed.
-
-### Detach
-
-Press `ctrl-a d` inside a jmux session. The TUI exits; the daemon and all shells continue running in the background.
-
-### Reattach
-
-```sh
-jmux
-# or from anywhere:
-jmux attach
-```
+|-----|--------|
+| `j` / `k` | Scroll down / up |
+| `ctrl-d` / `ctrl-u` | Half-page down / up |
+| `g` / `G` | Top / bottom |
 
 ---
 
 ## Session management
 
 ```sh
-jmux ls                  # list saved sessions
-jmux new [path]          # open a new session for a path (defaults to cwd)
-jmux kill <name>         # remove a saved session
-```
-
-`jmux ls` shows session names, project roots, pane counts, and last-known status.
-
-If you use the `j` alias from shell integration:
-
-```sh
-j                        # attach to jmux (or start it)
-j ~/projects/other-app   # open or switch to that project
+jmux ls                # list saved sessions
+jmux new [path]        # open a new session for a path (defaults to cwd)
+jmux kill <name>       # kill a session
 ```
 
 ---
 
 ## Config file
 
-Place `.jmux.toml` in your project root to define a fixed pane layout and startup commands.
+Place `.jmux.toml` in your project root:
 
 ```toml
 [project]
 name = "my-app"
 
 [[panes]]
-name = "server"
-cmd = "cargo run"
-
-[[panes]]
 name = "agent"
 cmd = "claude"
+
+[[panes]]
+name = "server"
+cmd = "cargo run"
 
 [[panes]]
 name = "shell"
 ```
 
-- `project.name` overrides the auto-detected project name in the status bar.
-- `panes[].cmd` runs automatically when the pane opens. Omit it for a plain shell.
-- Panes are ordered top-to-bottom / left-to-right depending on terminal width.
-
----
-
-## Socket protocol
-
-Every pane has `$JMUX_SOCKET` set in its environment. Agents and scripts can use this to push state updates directly.
-
-### CLI
-
-```sh
-jmux set-status working "Running tests"
-jmux set-status idle
-jmux set-status waiting "needs your input"
-jmux set-status error "build failed"
-jmux flash
-```
-
-`jmux set-status` and `jmux flash` are no-ops outside a jmux session (when `$JMUX_SOCKET` is not set), so they're safe to use in scripts unconditionally.
-
-### Raw socket
-
-Messages are newline-delimited JSON sent to the Unix socket at `$JMUX_SOCKET`.
-
-```json
-{"method": "set-status", "params": {"state": "working", "message": "Running tests"}}
-{"method": "set-status", "params": {"state": "idle"}}
-{"method": "set-status", "params": {"state": "waiting", "message": "needs input"}}
-{"method": "set-status", "params": {"state": "error", "message": "build failed"}}
-{"method": "flash", "params": {}}
-```
-
-Valid states: `working`, `idle`, `waiting`, `error`.
-
-Use the raw socket to integrate jmux state reporting into any tool that can write to a Unix socket — CI scripts, build systems, custom agents.
-
----
-
-## Narrow / mobile mode
-
-When the terminal width drops below 100 columns, jmux automatically switches to a compact layout:
-
-- Top bar shrinks to a single line showing the project name and a row of pane dots
-- Each dot reflects the pane's agent state (color-coded)
-- Panes stack vertically instead of side by side
-
-This makes jmux usable on a laptop with a narrow terminal or split alongside an editor.
+Panes without `cmd` open a plain shell.
 
 ---
 
 ## Building from source
 
 ```sh
-git clone https://github.com/joshholtz/jmux
+git clone https://github.com/joshdholtz/jmux
 cd jmux
 cargo build --release
-# binary is at target/release/jmux
+# binary: target/release/jmux
 ```
 
-### Workspace layout
+### Dev workflow
+
+```sh
+cargo build                  # compile
+cargo test -p jmux-core      # run tests
+cargo fmt                    # format
+cargo clippy -- -D warnings  # lint
+```
+
+Git hooks install automatically the first time you run `cargo test` (via `cargo-husky`). The pre-push hook runs `cargo fmt --check` and `cargo clippy`.
+
+### Workspace
 
 | Crate | Contents |
-|---|---|
-| `src/` | CLI entry point — argument parsing, subcommand dispatch |
-| `crates/jmux-core/` | State types, project detection, config parsing, persistence |
-| `crates/jmux-tui/` | TUI renderer, PTY management, socket server, daemon |
-
-### Key dependencies
-
-- [`ratatui`](https://github.com/ratatui-org/ratatui) — TUI rendering
-- [`portable-pty`](https://github.com/wez/wezterm/tree/main/pty) — cross-platform PTY multiplexing
-- [`vt100`](https://github.com/doy/vt100-rust) — terminal emulation / screen buffer
-- [`tokio`](https://tokio.rs) — async runtime for the socket server and daemon
-- [`crossterm`](https://github.com/crossterm-rs/crossterm) — terminal input and raw mode
-
-### State persistence
-
-Session layout is saved to `~/.local/share/jmux/state.json` on exit. The daemon socket lives at `/tmp/jmux-daemon-{hash}.sock` where `{hash}` is a stable 64-bit hash of the project root path.
+|-------|----------|
+| `src/` | CLI entry point — arg parsing, subcommand dispatch |
+| `crates/jmux-core/` | State types, project detection, config, persistence |
+| `crates/jmux-tui/` | TUI renderer, PTY management, daemon, socket client |
 
 ---
 

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+echo "jmux pre-push: checking formatting..."
+cargo fmt --check
+
+echo "jmux pre-push: running clippy..."
+cargo clippy -- -D warnings
+
+echo "jmux pre-push: all checks passed."
