@@ -31,7 +31,7 @@ while true; do
     printf "\n"
     jmux header "Open PRs"
     if command -v gh >/dev/null 2>&1; then
-        gh pr list --limit 20 --json number,title,isDraft \
+        gh pr list --repo joshdholtz/cooked-books-ai --limit 20 --json number,title,isDraft \
             --template '{{range .}}{{if not .isDraft}}#{{.number}}  {{.title}}{{"\n"}}{{end}}{{end}}' 2>/dev/null \
             | jmux select --on-enter "gh pr view {1} --web" \
                           --empty-message "no open PRs" \
