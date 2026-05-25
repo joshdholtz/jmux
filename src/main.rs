@@ -7,9 +7,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use jmux_core::persistence::{SavedSession, SavedState};
+use jmux_core::persistence::SavedSession;
 use jmux_core::{AgentState, AppState, PaneState, Session};
-use jmux_tui::{run_daemon, run_socket_server, App, DaemonClient};
+use jmux_tui::{run_daemon, App, DaemonClient};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
@@ -379,54 +379,6 @@ async fn run_tui_client(
     Ok(())
 }
 
-async fn run_tui_standalone(state: AppState) -> Result<()> {
-    let pid = std::process::id();
-    let socket_path = PathBuf::from(format!("/tmp/jmux-{}.sock", pid));
-
-    // Set JMUX_SOCKET so child processes can find the socket
-    std::env::set_var("JMUX_SOCKET", &socket_path);
-
-    let (tx, rx) = mpsc::channel::<jmux_tui::SocketEvent>(64);
-
-    let socket_path_clone = socket_path.clone();
-    tokio::spawn(async move {
-        if let Err(e) = run_socket_server(socket_path_clone, tx).await {
-            eprintln!("jmux socket server error: {}", e);
-        }
-    });
-
-    let socket_path_str = socket_path.to_string_lossy().to_string();
-
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture
-    )?;
-
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let final_state = App::new(state, rx, socket_path_str)
-        .run(&mut terminal)
-        .await?;
-
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture
-    )?;
-    disable_raw_mode()?;
-    terminal.show_cursor()?;
-
-    let saved = to_saved_state(&final_state);
-    let _ = jmux_core::persistence::save(&saved);
-
-    let _ = std::fs::remove_file(&socket_path);
-    Ok(())
-}
-
 fn build_state() -> AppState {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let project = jmux_core::detect_project(&cwd);
@@ -529,28 +481,6 @@ fn default_panes(
         process_name: None,
         cmd: None,
     }]
-}
-
-fn to_saved_state(state: &AppState) -> SavedState {
-    let sessions = state
-        .sessions
-        .iter()
-        .map(|s| {
-            let name = s
-                .project
-                .as_ref()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| format!("session-{}", s.id));
-            let project_root = s.project.as_ref().map(|p| p.root.clone());
-            let pane_cwds = s.panes.iter().map(|p| p.cwd.clone()).collect();
-            SavedSession {
-                name,
-                project_root,
-                pane_cwds,
-            }
-        })
-        .collect();
-    SavedState { sessions }
 }
 
 const CYAN: &str = "\x1b[36m";
