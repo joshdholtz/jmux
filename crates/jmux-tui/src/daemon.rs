@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
-use jmux_core::{AgentState, AppState, PaneState, ProjectKind, Session};
+use jmux_core::{AgentState, AppState, PaneState, PendingSelect, ProjectKind, Session};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::{broadcast, mpsc, Mutex};
@@ -671,6 +671,59 @@ async fn handle_request(
             let d = daemon.lock().await;
             let saved = to_saved_state(&d.state);
             let _ = jmux_core::persistence::save(&saved);
+        }
+        "select-prompt" => {
+            let items: Vec<String> = params["items"]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            let session_id = params["session_id"].as_u64().unwrap_or(0) as usize;
+            let pane_id = params["pane_id"].as_u64().unwrap_or(0) as usize;
+            let mut d = daemon.lock().await;
+            d.state.pending_select = Some(PendingSelect {
+                items,
+                selected: 0,
+                session_id,
+                pane_id,
+            });
+            let sm = state_msg(&d.state);
+            let _ = d.broadcast.send(sm);
+        }
+        "select-confirm" => {
+            let mut d = daemon.lock().await;
+            if let Some(sel) = &d.state.pending_select {
+                let item = sel.items.get(sel.selected).cloned().unwrap_or_default();
+                let result_msg =
+                    serde_json::json!({"type": "select-result", "item": item}).to_string() + "\n";
+                let _ = d.broadcast.send(result_msg);
+            }
+            d.state.pending_select = None;
+            let sm = state_msg(&d.state);
+            let _ = d.broadcast.send(sm);
+        }
+        "select-cancel" => {
+            let mut d = daemon.lock().await;
+            d.state.pending_select = None;
+            let cancel_msg = serde_json::json!({"type": "select-cancelled"}).to_string() + "\n";
+            let _ = d.broadcast.send(cancel_msg);
+            let sm = state_msg(&d.state);
+            let _ = d.broadcast.send(sm);
+        }
+        "select-nav" => {
+            let delta: i64 = params["delta"].as_i64().unwrap_or(0);
+            let mut d = daemon.lock().await;
+            if let Some(sel) = &mut d.state.pending_select {
+                let count = sel.items.len();
+                if delta > 0 && sel.selected + 1 < count {
+                    sel.selected += 1;
+                } else if delta < 0 && sel.selected > 0 {
+                    sel.selected -= 1;
+                }
+            }
+            let sm = state_msg(&d.state);
+            let _ = d.broadcast.send(sm);
         }
         other => {
             eprintln!("jmux daemon: unknown method '{}'", other);

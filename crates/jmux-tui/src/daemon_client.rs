@@ -13,10 +13,16 @@ pub struct PtyMessage {
     pub data: Vec<u8>,
 }
 
+pub enum SelectEvent {
+    Result(String),
+    Cancelled,
+}
+
 pub struct DaemonClient {
     pub writer: Arc<Mutex<tokio::net::unix::OwnedWriteHalf>>,
     state_rx: watch::Receiver<Option<AppState>>,
     pub pty_rx: Arc<Mutex<mpsc::Receiver<PtyMessage>>>,
+    pub select_rx: Arc<Mutex<mpsc::Receiver<SelectEvent>>>,
 }
 
 impl DaemonClient {
@@ -26,6 +32,7 @@ impl DaemonClient {
 
         let (state_tx, state_rx) = watch::channel::<Option<AppState>>(None);
         let (pty_tx, pty_rx) = mpsc::channel::<PtyMessage>(1024);
+        let (select_tx, select_rx) = mpsc::channel::<SelectEvent>(32);
         let writer = Arc::new(Mutex::new(writer));
         tokio::spawn(async move {
             let mut lines = BufReader::new(reader).lines();
@@ -60,6 +67,13 @@ impl DaemonClient {
                                     .await;
                             }
                         }
+                        Some("select-result") => {
+                            let item = msg["item"].as_str().unwrap_or("").to_string();
+                            let _ = select_tx.send(SelectEvent::Result(item)).await;
+                        }
+                        Some("select-cancelled") => {
+                            let _ = select_tx.send(SelectEvent::Cancelled).await;
+                        }
                         _ => {}
                     }
                 }
@@ -70,6 +84,7 @@ impl DaemonClient {
             writer,
             state_rx,
             pty_rx: Arc::new(Mutex::new(pty_rx)),
+            select_rx: Arc::new(Mutex::new(select_rx)),
         })
     }
 

@@ -454,6 +454,59 @@ impl App {
                             continue;
                         }
 
+                        // Select popup intercepts all keys when open
+                        if self.state.pending_select.is_some() {
+                            if let Some(ref client) = self.daemon_client {
+                                let writer = client.writer.clone();
+                                let msg_opt: Option<String> = match key.code {
+                                    KeyCode::Up | KeyCode::Char('k') => Some(
+                                        serde_json::json!({
+                                            "method": "select-nav",
+                                            "params": {"delta": -1}
+                                        })
+                                        .to_string()
+                                            + "\n",
+                                    ),
+                                    KeyCode::Down | KeyCode::Char('j') => Some(
+                                        serde_json::json!({
+                                            "method": "select-nav",
+                                            "params": {"delta": 1}
+                                        })
+                                        .to_string()
+                                            + "\n",
+                                    ),
+                                    KeyCode::Enter => Some(
+                                        serde_json::json!({
+                                            "method": "select-confirm",
+                                            "params": {}
+                                        })
+                                        .to_string()
+                                            + "\n",
+                                    ),
+                                    KeyCode::Esc | KeyCode::Char('q') => Some(
+                                        serde_json::json!({
+                                            "method": "select-cancel",
+                                            "params": {}
+                                        })
+                                        .to_string()
+                                            + "\n",
+                                    ),
+                                    _ => None,
+                                };
+                                if let Some(msg) = msg_opt {
+                                    tokio::spawn(async move {
+                                        let mut w = writer.lock().await;
+                                        let _ = tokio::io::AsyncWriteExt::write_all(
+                                            &mut *w,
+                                            msg.as_bytes(),
+                                        )
+                                        .await;
+                                    });
+                                }
+                            }
+                            continue;
+                        }
+
                         // Picker intercepts all keys when open
                         if self.show_picker {
                             match key.code {
@@ -1083,6 +1136,9 @@ impl App {
         match self.layout_mode {
             LayoutMode::Wide => layout::render_wide(f, self),
             LayoutMode::Narrow => layout::render_narrow(f, self),
+        }
+        if let Some(ref sel) = self.state.pending_select {
+            crate::widgets::select_popup::render_select_popup(f, sel);
         }
     }
 

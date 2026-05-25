@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
             empty_message,
             timeout,
         } => {
-            cmd_select(on_enter, empty_message, timeout)?;
+            cmd_select(on_enter, empty_message, timeout).await?;
         }
         Command::SetName { name } => {
             let Ok(socket_path) = get_socket_path() else {
@@ -488,6 +488,7 @@ fn build_state() -> AppState {
     AppState {
         sessions: vec![session],
         active_session: 0,
+        pending_select: None,
     }
 }
 
@@ -908,8 +909,122 @@ fn cmd_fmt_table(columns: Option<Vec<String>>) -> Result<()> {
     Ok(())
 }
 
-fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: u64) -> Result<()> {
-    use std::io::{BufRead, Write};
+async fn cmd_select(
+    on_enter: Option<String>,
+    empty_message: Option<String>,
+    timeout: u64,
+) -> Result<()> {
+    use std::io::BufRead;
+
+    // Read stdin items regardless of mode
+    let stdin = std::io::stdin();
+    let lines: Vec<String> = stdin
+        .lock()
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+
+    // If running inside jmux, delegate to daemon popup
+    if let Ok(socket_path) = std::env::var("JMUX_SOCKET") {
+        return cmd_select_daemon(lines, on_enter, std::path::PathBuf::from(socket_path)).await;
+    }
+
+    // Fallback: in-pane TUI (used outside jmux)
+    cmd_select_inpane(lines, on_enter, empty_message, timeout)
+}
+
+async fn cmd_select_daemon(
+    lines: Vec<String>,
+    on_enter: Option<String>,
+    socket_path: std::path::PathBuf,
+) -> Result<()> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    if lines.is_empty() {
+        // Nothing to select — exit silently
+        return Ok(());
+    }
+
+    let session_id = std::env::var("JMUX_SESSION_ID")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let pane_id = std::env::var("JMUX_PANE_ID")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    let stream = tokio::net::UnixStream::connect(&socket_path).await?;
+    let (reader, mut writer) = stream.into_split();
+    let mut buf_reader = BufReader::new(reader);
+
+    // Subscribe so we receive broadcast messages
+    let subscribe_msg = serde_json::json!({"method": "subscribe", "params": {}}).to_string() + "\n";
+    writer.write_all(subscribe_msg.as_bytes()).await?;
+    writer.flush().await?;
+
+    // Wait for initial state message so connection is established
+    let mut line_buf = String::new();
+    buf_reader.read_line(&mut line_buf).await?;
+
+    // Send select-prompt
+    let prompt_msg = serde_json::json!({
+        "method": "select-prompt",
+        "params": {
+            "items": lines,
+            "session_id": session_id,
+            "pane_id": pane_id,
+        }
+    })
+    .to_string()
+        + "\n";
+    writer.write_all(prompt_msg.as_bytes()).await?;
+    writer.flush().await?;
+
+    // Read broadcast messages until we get select-result or select-cancelled
+    let selected_item = loop {
+        line_buf.clear();
+        let n = buf_reader.read_line(&mut line_buf).await?;
+        if n == 0 {
+            break None; // Connection closed
+        }
+        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(line_buf.trim()) {
+            match msg["type"].as_str() {
+                Some("select-result") => {
+                    let item = msg["item"].as_str().unwrap_or("").to_string();
+                    break Some(item);
+                }
+                Some("select-cancelled") => {
+                    break None;
+                }
+                _ => {}
+            }
+        }
+    };
+
+    if let (Some(item), Some(action)) = (selected_item, on_enter) {
+        let fields: Vec<&str> = item.split_whitespace().collect();
+        let mut cmd = action.clone();
+        for (i, field) in fields.iter().enumerate() {
+            cmd = cmd.replace(&format!("{{{}}}", i + 1), field);
+        }
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .status()?;
+    }
+
+    Ok(())
+}
+
+fn cmd_select_inpane(
+    lines: Vec<String>,
+    on_enter: Option<String>,
+    empty_message: Option<String>,
+    timeout: u64,
+) -> Result<()> {
+    use std::io::Write;
     use std::time::{Duration, Instant};
 
     use crossterm::{
@@ -921,14 +1036,6 @@ fn cmd_select(on_enter: Option<String>, empty_message: Option<String>, timeout: 
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
     };
-
-    let stdin = std::io::stdin();
-    let lines: Vec<String> = stdin
-        .lock()
-        .lines()
-        .map_while(Result::ok)
-        .filter(|l| !l.trim().is_empty())
-        .collect();
 
     if lines.is_empty() {
         // Raw mode so keystrokes are absorbed silently rather than echoed

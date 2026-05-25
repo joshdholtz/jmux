@@ -32,9 +32,19 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingSelect {
+    pub items: Vec<String>,
+    pub selected: usize,
+    pub session_id: usize,
+    pub pane_id: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub sessions: Vec<Session>,
     pub active_session: usize,
+    #[serde(default)]
+    pub pending_select: Option<PendingSelect>,
 }
 
 impl AppState {
@@ -82,6 +92,7 @@ mod tests {
         let state = AppState {
             sessions: vec![],
             active_session: 0,
+            pending_select: None,
         };
         assert_eq!(state.attention_count(), 0);
     }
@@ -97,6 +108,7 @@ mod tests {
                 ],
             )],
             active_session: 0,
+            pending_select: None,
         };
         assert_eq!(state.attention_count(), 0);
     }
@@ -123,6 +135,7 @@ mod tests {
                 ),
             ],
             active_session: 0,
+            pending_select: None,
         };
         assert_eq!(state.attention_count(), 2);
     }
