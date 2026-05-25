@@ -22,11 +22,18 @@ Split your terminal into panes, manage sessions across projects, detach and reat
 
 ## Why not tmux?
 
-If you're happy in tmux, stay there. tmux is excellent at what it does.
+If you're happy in tmux, stay there. tmux is excellent and does far more than jmux.
 
-jmux adds one thing tmux doesn't: **a live sidebar that shows what every pane across every session is doing, without you switching to it.** Pane names update automatically as commands run. If a process needs your attention — a prompt, an error, a build that finished — you see it in the sidebar before you've even moved your eyes.
+The differences are about what jmux is opinionated about:
 
-The other difference is framing. tmux is a general-purpose multiplexer you configure to fit your workflow. jmux is opinionated about one workflow: you have multiple projects open, each with multiple things running, and you want to stay oriented across all of them at a glance.
+- **Live sidebar** — shows every pane across every session with the current process name and state. You see what's running and whether it needs attention without switching to it.
+- **Pane names that follow you** — names update automatically as commands run. Start `cargo build`, the pane says `cargo`. Open `vim`, it says `vim`. No manual renaming.
+- **Project-scoped sessions** — jmux auto-detects git roots and scopes sessions to them. Each project gets its own daemon, its own panes, its own layout. `jmux new ~/projects/other-app` opens a separate session without touching what you already have open.
+- **Always-daemon, zero config** — `jmux` spawns a background daemon and connects. Detach with `ctrl-a d`, come back later with `jmux`. Nothing dies, nothing needs restarting.
+- **`.jmux.toml`** — define the panes and startup commands for a project once. `jmux` reads it and sets everything up.
+- **Process and agent state** — if a process needs your input or errored out, the sidebar shows it. Works for AI agents (Claude, Codex, etc.) and any tool that emits an OSC sequence.
+
+tmux wins on maturity, plugin ecosystem, scriptability, and raw flexibility. jmux wins if you want a multiplexer that already knows about projects, processes, and what everything is doing.
 
 ---
 
