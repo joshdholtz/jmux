@@ -30,10 +30,10 @@ fn dim_color(color: Color) -> Color {
         Color::LightYellow => Color::Yellow,
         Color::Black => Color::Black,
         Color::Indexed(n) => {
-            if n >= 8 && n <= 15 {
+            if (8..=15).contains(&n) {
                 // bright → normal
                 Color::Indexed(n - 8)
-            } else if n >= 16 && n <= 231 {
+            } else if (16..=231).contains(&n) {
                 // xterm 6x6x6 RGB cube: halve each component
                 let i = n - 16;
                 let r = i / 36;

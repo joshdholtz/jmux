@@ -95,14 +95,14 @@ pub async fn run_daemon(state: AppState, socket_path: &Path, rows: u16, cols: u1
                             pane.process_name = Some(new_name);
                             state_dirty = true;
                         }
-                        if !fg_running {
-                            if matches!(
+                        if !fg_running
+                            && matches!(
                                 pane.agent_state,
                                 AgentState::Working { .. } | AgentState::Waiting { .. }
-                            ) {
-                                pane.agent_state = AgentState::Idle;
-                                state_dirty = true;
-                            }
+                            )
+                        {
+                            pane.agent_state = AgentState::Idle;
+                            state_dirty = true;
                         }
                     }
                 }
@@ -159,14 +159,14 @@ pub async fn run_daemon(state: AppState, socket_path: &Path, rows: u16, cols: u1
                                 pane.process_name = Some(new_name);
                                 changed = true;
                             }
-                            if !running {
-                                if matches!(
+                            if !running
+                                && matches!(
                                     pane.agent_state,
                                     AgentState::Working { .. } | AgentState::Waiting { .. }
-                                ) {
-                                    pane.agent_state = AgentState::Idle;
-                                    changed = true;
-                                }
+                                )
+                            {
+                                pane.agent_state = AgentState::Idle;
+                                changed = true;
                             }
                         }
                     }
@@ -339,8 +339,7 @@ async fn handle_request(
                     for &byte in &data {
                         match byte {
                             b'\r' | b'\n' => {
-                                entered_cmd =
-                                    buf.trim().split_whitespace().next().map(|s| s.to_string());
+                                entered_cmd = buf.split_whitespace().next().map(|s| s.to_string());
                                 buf.clear();
                             }
                             0x7f | 0x08 => {
